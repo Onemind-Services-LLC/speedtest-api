@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "node index.js",
-    "prod": "pm2 start index.js --name speedtest-api"
+    "start": "pm2 start index.js --name speedtest-api",
+    "stop": "pm2 stop speedtest-api",
+    "restart": "pm2 restart speedtest-api",
+    "ls": "pm2 ls",
+    "logs": "pm2 logs"
   },
   "dependencies": {
     "express": "^4.18.2",
