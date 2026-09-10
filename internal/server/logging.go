@@ -46,21 +46,64 @@ func (b *loggedBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (s *Server) logRequest(r *http.Request, w *loggedResponse, body *loggedBody, id string, started time.Time) {
-	path := r.URL.Path
+// Return fixed labels so request data never becomes log content, even when a
+// caller configures a different slog handler.
+func requestLogPath(path string) string {
 	switch path {
-	case "/v1/network", "/v1/info", "/v1/packet-loss", "/__down", "/__up", "/healthz", "/readyz", "/metrics":
+	case "/v1/network":
+		return "/v1/network"
+	case "/v1/info":
+		return "/v1/info"
+	case "/v1/packet-loss":
+		return "/v1/packet-loss"
+	case "/__down":
+		return "/__down"
+	case "/__up":
+		return "/__up"
+	case "/healthz":
+		return "/healthz"
+	case "/readyz":
+		return "/readyz"
+	case "/metrics":
+		return "/metrics"
 	default:
-		// Arbitrary paths, queries, headers and network addresses can contain
-		// personal data. Log the route classification instead of user input.
-		path = "unmatched"
+		return "unmatched"
 	}
+}
+
+func requestLogMethod(method string) string {
+	switch method {
+	case http.MethodGet:
+		return http.MethodGet
+	case http.MethodHead:
+		return http.MethodHead
+	case http.MethodPost:
+		return http.MethodPost
+	case http.MethodPut:
+		return http.MethodPut
+	case http.MethodPatch:
+		return http.MethodPatch
+	case http.MethodDelete:
+		return http.MethodDelete
+	case http.MethodConnect:
+		return http.MethodConnect
+	case http.MethodOptions:
+		return http.MethodOptions
+	case http.MethodTrace:
+		return http.MethodTrace
+	default:
+		return "OTHER"
+	}
+}
+
+func (s *Server) logRequest(r *http.Request, w *loggedResponse, body *loggedBody, id string, started time.Time) {
+	path, method := requestLogPath(r.URL.Path), requestLogMethod(r.Method)
 	status := w.status
 	if status == 0 {
 		status = http.StatusOK
 	}
 	level, outcome := slog.LevelInfo, "completed"
-	if path == "/healthz" || path == "/readyz" || path == "/metrics" || r.Method == http.MethodOptions {
+	if path == "/healthz" || path == "/readyz" || path == "/metrics" || method == http.MethodOptions {
 		level = slog.LevelDebug
 	}
 	if status >= 400 {
@@ -73,7 +116,7 @@ func (s *Server) logRequest(r *http.Request, w *loggedResponse, body *loggedBody
 		level, outcome = slog.LevelWarn, "interrupted"
 	}
 	s.logger.Log(r.Context(), level, "http request",
-		"request_id", id, "method", r.Method, "path", path,
+		"request_id", id, "method", method, "path", path,
 		"status", status, "outcome", outcome,
 		"duration_ms", float64(time.Since(started).Microseconds())/1000,
 		"bytes_received", body.bytes, "bytes_sent", w.bytes,

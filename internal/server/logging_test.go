@@ -37,6 +37,9 @@ func TestRequestLogsCountStreamingBytesAndMatchRequestID(t *testing.T) {
 			}
 			w := call(s, method, path, strings.NewReader(payload), map[string]string{"Authorization": "private-token", "Origin": "http://localhost:3000"})
 			entry := decodeLog(t, logs)
+			if entry["method"] != method || entry["path"] != strings.SplitN(path, "?", 2)[0] {
+				t.Fatalf("missing request classification: %v", entry)
+			}
 			if entry["status"] != float64(200) || entry["outcome"] != "completed" || entry["region"] != "local" {
 				t.Fatalf("unexpected entry: %v", entry)
 			}
@@ -51,6 +54,43 @@ func TestRequestLogsCountStreamingBytesAndMatchRequestID(t *testing.T) {
 			}
 			if strings.Contains(logs.String(), "private-") || strings.Contains(logs.String(), "192.0.2.1") {
 				t.Fatal("request data leaked into logs")
+			}
+		})
+	}
+}
+
+func TestRequestLogsExcludeUnrecognizedMethodsAndPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, target, loggedMethod, loggedPath string
+		status                                         int
+	}{
+		{"path line breaks", "GET", "/v1/info%0d%0alevel=ERROR%20msg=forged", "GET", "unmatched", 404},
+		{"path markup", "GET", "/%3Cscript%3Eforged%3C/script%3E", "GET", "unmatched", 404},
+		{"path unicode separator", "GET", "/v1/info%E2%80%A8forged", "GET", "unmatched", 404},
+		{"custom method", "forged-private-token", "/v1/info", "OTHER", "/v1/info", 405},
+		{"method line breaks", "GET\r\nlevel=ERROR msg=forged", "/v1/info", "OTHER", "/v1/info", 405},
+		{"method markup", "<script>forged</script>", "/v1/info", "OTHER", "/v1/info", 405},
+		{"standard rejected method", "DELETE", "/v1/info", "DELETE", "/v1/info", 405},
+		{"query on known path", "GET", "/v1/info?token=forged", "GET", "/v1/info", 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := testServer(t)
+			logs := captureLogs(s, slog.LevelInfo)
+			r := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			// Exercise the handler directly as well as values accepted by the
+			// HTTP parser; logging must not depend on transport validation.
+			r.Method = tc.method
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			entry := decodeLog(t, logs)
+			if w.Code != tc.status || entry["status"] != float64(tc.status) {
+				t.Fatalf("unexpected response or logged status: %d, %v", w.Code, entry)
+			}
+			if entry["method"] != tc.loggedMethod || entry["path"] != tc.loggedPath {
+				t.Fatalf("unexpected request classification: %v", entry)
+			}
+			if strings.Contains(logs.String(), "forged") || bytes.Count(logs.Bytes(), []byte("\n")) != 1 {
+				t.Fatal("untrusted request content leaked into logs")
 			}
 		})
 	}
