@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"regexp"
@@ -14,18 +15,20 @@ import (
 
 // Config describes one regional endpoint. There is no shared database or registry.
 type Config struct {
-	WebRTCAddress  string
-	WebRTCPublicIP string
-	MaxWebRTC      int
-	Address        string
-	RegionID       string
-	RegionName     string
-	AllowedOrigins []string
-	MaxDownload    int64
-	MaxUpload      int64
-	MaxConcurrent  int
-	RequestTimeout time.Duration
-	LogLevel       slog.Level
+	ASNDatabasePath string
+	TrustedProxies  []string
+	WebRTCAddress   string
+	WebRTCPublicIP  string
+	MaxWebRTC       int
+	Address         string
+	RegionID        string
+	RegionName      string
+	AllowedOrigins  []string
+	MaxDownload     int64
+	MaxUpload       int64
+	MaxConcurrent   int
+	RequestTimeout  time.Duration
+	LogLevel        slog.Level
 }
 
 func DefaultConfig() Config {
@@ -56,11 +59,15 @@ func ConfigFromEnv() (Config, error) {
 	}
 	for name, target := range map[string]*string{
 		"WEBRTC_LISTEN_ADDR": &c.WebRTCAddress, "WEBRTC_PUBLIC_IP": &c.WebRTCPublicIP,
-		"LISTEN_ADDR": &c.Address, "REGION_ID": &c.RegionID, "REGION_NAME": &c.RegionName,
+		"ASN_DATABASE_PATH": &c.ASNDatabasePath,
+		"LISTEN_ADDR":       &c.Address, "REGION_ID": &c.RegionID, "REGION_NAME": &c.RegionName,
 	} {
 		if value, ok := os.LookupEnv(name); ok {
 			*target = value
 		}
+	}
+	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
+		c.TrustedProxies = strings.Split(value, ",")
 	}
 	if value, ok := os.LookupEnv("ALLOWED_ORIGINS"); ok {
 		c.AllowedOrigins = strings.Split(value, ",")
@@ -99,6 +106,12 @@ func ConfigFromEnv() (Config, error) {
 }
 
 func (c Config) Validate() error {
+	for _, value := range c.TrustedProxies {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(value))
+		if err != nil || prefix.Bits() == 0 {
+			return fmt.Errorf("TRUSTED_PROXY_CIDRS must contain explicit non-default CIDR ranges")
+		}
+	}
 	if c.MaxWebRTC < 1 || c.MaxWebRTC > 1024 {
 		return fmt.Errorf("MAX_WEBRTC_SESSIONS must be between 1 and 1024")
 	}

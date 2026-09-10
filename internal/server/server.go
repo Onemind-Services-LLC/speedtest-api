@@ -8,27 +8,32 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/oschwald/maxminddb-golang/v2"
 )
 
 const ProtocolVersion = 1
 
 type Server struct {
-	logger        *slog.Logger
-	packetLoss    *packetLossServer
-	config        Config
-	origins       map[string]bool
-	payload       []byte
-	slots         chan struct{}
-	ready         atomic.Bool
-	downloadBytes atomic.Int64
-	uploadBytes   atomic.Int64
-	transfers     atomic.Int64
-	rejected      atomic.Int64
+	asnDB          *maxminddb.Reader
+	trustedProxies []netip.Prefix
+	logger         *slog.Logger
+	packetLoss     *packetLossServer
+	config         Config
+	origins        map[string]bool
+	payload        []byte
+	slots          chan struct{}
+	ready          atomic.Bool
+	downloadBytes  atomic.Int64
+	uploadBytes    atomic.Int64
+	transfers      atomic.Int64
+	rejected       atomic.Int64
 }
 
 func New(c Config) (*Server, error) {
@@ -42,6 +47,17 @@ func New(c Config) (*Server, error) {
 	}
 	for _, origin := range c.AllowedOrigins {
 		s.origins[strings.TrimSpace(origin)] = true
+	}
+	for _, value := range c.TrustedProxies {
+		prefix, _ := netip.ParsePrefix(strings.TrimSpace(value))
+		s.trustedProxies = append(s.trustedProxies, prefix)
+	}
+	if c.ASNDatabasePath != "" {
+		db, err := maxminddb.Open(c.ASNDatabasePath)
+		if err != nil {
+			return nil, fmt.Errorf("open ASN database: %w", err)
+		}
+		s.asnDB = db
 	}
 	s.ready.Store(true)
 	return s, nil
@@ -86,7 +102,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/__up", "/v1/packet-loss":
 		method = http.MethodPost
-	case "/__down", "/v1/info", "/healthz", "/readyz", "/metrics":
+	case "/__down", "/v1/network", "/v1/info", "/healthz", "/readyz", "/metrics":
 	default:
 		fail(w, http.StatusNotFound, "endpoint not found")
 		return
@@ -137,10 +153,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			reply(w, http.StatusOK, map[string]any{
-				"capabilities":    map[string]bool{"packetLoss": s.packetLoss != nil},
+				"capabilities":    map[string]bool{"packetLoss": s.packetLoss != nil, "networkIdentity": true},
 				"protocolVersion": ProtocolVersion, "region": map[string]string{"id": s.config.RegionID, "name": s.config.RegionName},
 				"limits": map[string]any{"maxDownloadBytes": s.config.MaxDownload, "maxUploadBytes": s.config.MaxUpload, "maxConcurrentTransfers": s.config.MaxConcurrent},
 			})
+		case "/v1/network":
+			s.network(w, r)
 		case "/v1/packet-loss":
 			s.packetLossOffer(w, r)
 		case "/__down":

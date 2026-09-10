@@ -3,6 +3,7 @@ module github.com/Onemind-Services-LLC/speedtest-api
 go 1.27.1
 
 require (
+	github.com/oschwald/maxminddb-golang/v2 v2.2.0
 	github.com/pion/ice/v4 v4.4.2
 	github.com/pion/webrtc/v4 v4.2.20
 )

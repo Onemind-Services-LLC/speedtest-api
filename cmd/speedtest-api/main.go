@@ -31,6 +31,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	defer app.Close()
 	if err := app.StartPacketLoss(); err != nil {
 		return err
 	}

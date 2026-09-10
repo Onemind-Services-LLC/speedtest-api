@@ -49,7 +49,7 @@ func (b *loggedBody) Read(p []byte) (int, error) {
 func (s *Server) logRequest(r *http.Request, w *loggedResponse, body *loggedBody, id string, started time.Time) {
 	path := r.URL.Path
 	switch path {
-	case "/v1/info", "/v1/packet-loss", "/__down", "/__up", "/healthz", "/readyz", "/metrics":
+	case "/v1/network", "/v1/info", "/v1/packet-loss", "/__down", "/__up", "/healthz", "/readyz", "/metrics":
 	default:
 		// Arbitrary paths, queries, headers and network addresses can contain
 		// personal data. Log the route classification instead of user input.

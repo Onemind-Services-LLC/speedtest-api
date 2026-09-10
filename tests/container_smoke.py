@@ -26,6 +26,13 @@ try:
         raise RuntimeError("Container did not become healthy")
     with urllib.request.urlopen(f"{base}/v1/info", timeout=5) as response:
         assert json.load(response)["region"]["id"] == "local"
+    with urllib.request.urlopen(f"{base}/v1/network", timeout=5) as response:
+        network = json.load(response)
+        assert network["regionId"] == "local"
+        assert network["family"] == 4
+        assert network["asn"] is None
+        assert network["asnStatus"] == "private-address"
+        assert network["ip"]
     request = urllib.request.Request(f"{base}/__down?bytes=131072", headers={"Origin": "http://localhost:3000"})
     with urllib.request.urlopen(request, timeout=5) as response:
         payload = response.read()
@@ -40,6 +47,6 @@ try:
         assert json.load(response) == {"bytes": len(payload), "regionId": "local"}
     user = subprocess.check_output(["docker", "inspect", "--format", "{{.Config.User}}", container], text=True).strip()
     assert user == "65532:65532"
-    print("Container smoke test passed: non-root, read-only, health, CORS, download and upload.")
+    print("Container smoke test passed: non-root, read-only, health, network identity, CORS, download and upload.")
 finally:
     subprocess.run(["docker", "stop", "--time", "5", container], check=False, stdout=subprocess.DEVNULL)
