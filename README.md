@@ -2,7 +2,7 @@
 
 A self-contained Go HTTP server for measuring the connection between a browser and one datacenter. Pair it with [speedtest-ui](../speedtest-ui), a Next.js App Router application that discovers configured regions and selects the lowest-latency healthy endpoint.
 
-This replaces the original Express/PM2 prototype. Each instance has a stable region identity. There is no database, central coordinator, runtime Cloudflare dependency, persistent client IP storage, or results ingestion endpoint. Kubernetes packaging is deliberately deferred; this repository currently covers the application and local verification.
+This replaces the original Express/PM2 prototype. Each instance has a stable region identity. There is no database, central coordinator, persistent client IP storage, or results ingestion endpoint. Kubernetes packaging is deliberately deferred; this repository currently covers the application and local verification.
 
 ## Run locally
 
@@ -76,7 +76,7 @@ go build ./cmd/speedtest-api
 
 The API tests cover exact sizes, malformed input, upload EOF/receipts, chunked limits, interruption, concurrency, CORS, draining and an actual HTTP upload. The UI's Playwright suite additionally builds this repository and starts two real regional processes behind controlled latency proxies; see its README.
 
-The measurements are inspired by [Cloudflare Speed Test](https://speed.cloudflare.com/about). This server and the companion browser engine implement their own documented HTTP protocol and do not send test results to Cloudflare.
+This server and the companion browser engine implement the HTTP protocol documented above. Measurement traffic remains between the browser and the selected regional server.
 
 ## UDP packet-loss protocol
 
@@ -92,7 +92,11 @@ This source has bounded transfers and UDP sessions, graceful shutdown, and integ
 
 ## Docker image and GitHub Actions
 
-`API CI and image` runs Go formatting, module verification, vet and race tests. It then builds the actual image and smoke-tests it as a non-root process with a read-only filesystem. Successful pushes to `master` publish `ghcr.io/onemind-services-llc/speedtest-api:latest` and a full `sha-<commit>` tag for Linux AMD64 and ARM64. Version tags (`v1.2.3`) additionally publish the corresponding semantic version. Publication depends on both validation jobs; pull requests and manual validation runs do not publish or receive registry credentials. OCI source/revision metadata, provenance and an SBOM accompany published images. The workflow uses the organization’s `ci-test` and `ci-build` runners and the repository's `GITHUB_TOKEN` for GHCR.
+`API CI and image` runs Go formatting, module verification, vet and race tests. It uses the pinned `container-build.yml`, `container-scan.yml` and `container-publish.yml` workflows from `Onemind-Services-LLC/actions`. The built OCI artifact is verified by digest, smoke-tested as a non-root process with a read-only filesystem, and scanned before publication. Publication consumes that same artifact without rebuilding, includes provenance and an SBOM, and signs and verifies the image digest.
+
+Successful protected pushes to `master` publish `registry.onemindservices.com/speedtest/api:master` and a full `sha-<commit>` tag. Protected version tags (`v1.2.3`) publish the corresponding version. The shared builder currently produces Linux AMD64 images; the Dockerfile also supports ARM64 cross-compilation. Pull requests, unprotected pushes and manual runs build and smoke-test locally without receiving registry credentials or publishing.
+
+The registry must have a `speedtest` project. Provide the organization’s `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets to this repository with permission to push `speedtest/api`. The workflow uses the organization’s `ci-test` and `ci-build` runners; pull requests from forks use GitHub-hosted runners. Kubernetes packaging remains deferred.
 
 The image is built from a pinned Go base and contains only the static application binary, running as UID/GID 65532. The Docker build context allows only the Go build inputs, excluding local environment files, credentials and development artifacts.
 
