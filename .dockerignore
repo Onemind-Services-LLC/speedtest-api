@@ -1,0 +1,9 @@
+# Only application build inputs enter the context.
+**
+!Dockerfile
+!go.mod
+!go.sum
+!cmd/
+!cmd/**
+!internal/
+!internal/**

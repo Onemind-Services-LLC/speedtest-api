@@ -1,0 +1,2 @@
+self-hosted-runner:
+  labels: [ci-small, ci-test, ci-build]
