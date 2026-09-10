@@ -1,5 +1,10 @@
 # OneMind Services Speedtest API
 
+[![CI](https://github.com/Onemind-Services-LLC/speedtest-api/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Onemind-Services-LLC/speedtest-api/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Onemind-Services-LLC/speedtest-api/actions/workflows/github-code-scanning/codeql/badge.svg?branch=master)](https://github.com/Onemind-Services-LLC/speedtest-api/actions/workflows/github-code-scanning/codeql)
+[![Go version](https://img.shields.io/github/go-mod/go-version/Onemind-Services-LLC/speedtest-api?logo=go)](go.mod)
+[![Container image](https://img.shields.io/badge/container-available-2496ED?logo=docker&logoColor=white)](docs/technical-reference.md#docker-image-and-github-actions)
+
 The regional measurement service behind OneMind Services' browser-based speed testing experience.
 
 Speedtest API helps users understand how their internet connection performs when connecting to a specific datacenter. It works with [Speedtest UI](https://github.com/Onemind-Services-LLC/speedtest-ui) to support download and upload speed tests, latency measurements, packet-loss testing, and network identification.
