@@ -118,13 +118,14 @@ func (s *Server) packetLossOffer(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid offer body")
 		return
 	}
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
+	client := s.clientIP(r)
+	if !client.IsValid() {
 		fail(w, http.StatusBadRequest, "invalid client address")
 		return
 	}
+	ip := client.String()
 	p.mu.Lock()
-	if p.closed || len(p.peers) >= p.limit || p.perIP[ip] >= 4 {
+	if p.closed || len(p.peers) >= p.limit || p.perIP[ip] >= s.config.MaxWebRTCPerClient {
 		p.mu.Unlock()
 		w.Header().Set("Retry-After", "5")
 		fail(w, http.StatusServiceUnavailable, "packet loss service is busy")

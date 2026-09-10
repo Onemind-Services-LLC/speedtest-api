@@ -15,24 +15,29 @@ import (
 
 // Config describes one regional endpoint. There is no shared database or registry.
 type Config struct {
-	ASNDatabasePath string
-	TrustedProxies  []string
-	WebRTCAddress   string
-	WebRTCPublicIP  string
-	MaxWebRTC       int
-	Address         string
-	RegionID        string
-	RegionName      string
-	AllowedOrigins  []string
-	MaxDownload     int64
-	MaxUpload       int64
-	MaxConcurrent   int
-	RequestTimeout  time.Duration
-	LogLevel        slog.Level
+	Environment        string
+	MetricsAddress     string
+	MaxPerClient       int
+	MaxWebRTCPerClient int
+	ASNDatabasePath    string
+	TrustedProxies     []string
+	WebRTCAddress      string
+	WebRTCPublicIP     string
+	MaxWebRTC          int
+	Address            string
+	RegionID           string
+	RegionName         string
+	AllowedOrigins     []string
+	MaxDownload        int64
+	MaxUpload          int64
+	MaxConcurrent      int
+	RequestTimeout     time.Duration
+	LogLevel           slog.Level
 }
 
 func DefaultConfig() Config {
 	return Config{
+		Environment: "development", MaxPerClient: 16, MaxWebRTCPerClient: 16,
 		WebRTCAddress: ":8081", MaxWebRTC: 64,
 		Address: ":8080", RegionID: "local", RegionName: "Local development",
 		AllowedOrigins: []string{"http://localhost:3000", "http://127.0.0.1:3000"},
@@ -58,6 +63,7 @@ func ConfigFromEnv() (Config, error) {
 		}
 	}
 	for name, target := range map[string]*string{
+		"SPEEDTEST_ENV": &c.Environment, "METRICS_LISTEN_ADDR": &c.MetricsAddress,
 		"WEBRTC_LISTEN_ADDR": &c.WebRTCAddress, "WEBRTC_PUBLIC_IP": &c.WebRTCPublicIP,
 		"ASN_DATABASE_PATH": &c.ASNDatabasePath,
 		"LISTEN_ADDR":       &c.Address, "REGION_ID": &c.RegionID, "REGION_NAME": &c.RegionName,
@@ -81,12 +87,14 @@ func ConfigFromEnv() (Config, error) {
 			*target = n
 		}
 	}
-	if value, ok := os.LookupEnv("MAX_CONCURRENT_TRANSFERS"); ok {
-		n, err := strconv.Atoi(value)
-		if err != nil {
-			return c, fmt.Errorf("MAX_CONCURRENT_TRANSFERS must be an integer")
+	for name, target := range map[string]*int{"MAX_CONCURRENT_TRANSFERS": &c.MaxConcurrent, "MAX_TRANSFERS_PER_CLIENT": &c.MaxPerClient, "MAX_WEBRTC_PER_CLIENT": &c.MaxWebRTCPerClient} {
+		if value, ok := os.LookupEnv(name); ok {
+			n, err := strconv.Atoi(value)
+			if err != nil {
+				return c, fmt.Errorf("%s must be an integer", name)
+			}
+			*target = n
 		}
-		c.MaxConcurrent = n
 	}
 	if value, ok := os.LookupEnv("MAX_WEBRTC_SESSIONS"); ok {
 		n, err := strconv.Atoi(value)
@@ -106,6 +114,22 @@ func ConfigFromEnv() (Config, error) {
 }
 
 func (c Config) Validate() error {
+	if c.Environment != "development" && c.Environment != "production" {
+		return fmt.Errorf("SPEEDTEST_ENV must be development or production")
+	}
+	if c.MaxPerClient < 1 || c.MaxPerClient > 1024 || c.MaxWebRTCPerClient < 1 || c.MaxWebRTCPerClient > 1024 {
+		return fmt.Errorf("per-client limits must be between 1 and 1024")
+	}
+	if c.MetricsAddress != "" {
+		host, _, err := net.SplitHostPort(c.MetricsAddress)
+		ip, ipErr := netip.ParseAddr(host)
+		if err != nil || ipErr != nil || !(ip.IsLoopback() || ip.IsPrivate()) {
+			return fmt.Errorf("METRICS_LISTEN_ADDR must bind an explicit loopback or private IP and port")
+		}
+	}
+	if c.Environment == "production" && (c.RegionID == "local" || c.MetricsAddress == "") {
+		return fmt.Errorf("production requires a non-local REGION_ID and private METRICS_LISTEN_ADDR")
+	}
 	for _, value := range c.TrustedProxies {
 		prefix, err := netip.ParsePrefix(strings.TrimSpace(value))
 		if err != nil || prefix.Bits() == 0 {
@@ -152,6 +176,11 @@ func (c Config) Validate() error {
 		u, err := url.Parse(origin)
 		if err != nil || u.Hostname() == "" || strings.Contains(u.Host, "*") || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || origin != u.Scheme+"://"+u.Host {
 			return fmt.Errorf("ALLOWED_ORIGINS must contain exact http(s) origins without paths or wildcards")
+		}
+		host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+		ip := net.ParseIP(host)
+		if c.Environment == "production" && (u.Scheme != "https" || host == "localhost" || strings.HasSuffix(host, ".localhost") || (ip != nil && (ip.IsLoopback() || ip.IsUnspecified()))) {
+			return fmt.Errorf("production ALLOWED_ORIGINS must use HTTPS without loopback hosts")
 		}
 	}
 	return nil

@@ -24,11 +24,12 @@ This approach supports connectivity troubleshooting and comparisons across datac
 
 ## Data handling
 
-The API does not retain client IP addresses or individual test results. Application logs exclude client addresses and transfer contents. Optional network identification uses a local database without sending client addresses to an external lookup service.
+The API does not persist client IP addresses or individual test results. Temporary in-memory counters enforce concurrency limits and are removed when active transfers and sessions end. Application logs exclude client addresses and transfer contents. Optional network identification uses a local database without sending client addresses to an external lookup service.
 
 ## Project resources
 
 - [Speedtest UI](https://github.com/Onemind-Services-LLC/speedtest-ui) — the companion browser application.
+- [Production checklist](docs/production.md) — release validation and deployment requirements.
 - [Technical reference](docs/technical-reference.md) — setup, configuration, integration, and operational details.
 
 Maintained by [OneMind Services](https://github.com/Onemind-Services-LLC).

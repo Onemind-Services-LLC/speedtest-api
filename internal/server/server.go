@@ -12,9 +12,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Onemind-Services-LLC/speedtest-api/internal/version"
 	"github.com/oschwald/maxminddb-golang/v2"
 )
 
@@ -29,6 +31,8 @@ type Server struct {
 	origins        map[string]bool
 	payload        []byte
 	slots          chan struct{}
+	clientsMu      sync.Mutex
+	clients        map[netip.Addr]int
 	ready          atomic.Bool
 	downloadBytes  atomic.Int64
 	uploadBytes    atomic.Int64
@@ -41,6 +45,7 @@ func New(c Config) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{config: c, origins: make(map[string]bool), payload: make([]byte, 1<<20), slots: make(chan struct{}, c.MaxConcurrent)}
+	s.clients = make(map[netip.Addr]int)
 	s.logger = slog.Default().With("region", c.RegionID)
 	if _, err := rand.Read(s.payload); err != nil {
 		return nil, err
@@ -74,6 +79,23 @@ func (s *Server) HTTPServer() *http.Server {
 	}
 }
 
+// MetricsServer is isolated from the public measurement listener.
+func (s *Server) MetricsServer() *http.Server {
+	if s.config.MetricsAddress == "" {
+		return nil
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		s.metrics(w)
+	})
+	srv := s.HTTPServer()
+	srv.Addr = s.config.MetricsAddress
+	srv.Handler = mux
+	return srv
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	recorded := &loggedResponse{ResponseWriter: w}
@@ -89,6 +111,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Speedtest-Region", s.config.RegionID)
 	h.Set("X-Accel-Buffering", "no")
 	h.Set("Vary", "Origin")
+	if r.URL.Path == "/metrics" && s.config.MetricsAddress != "" {
+		fail(w, http.StatusNotFound, "endpoint not found")
+		return
+	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		if !s.origins[origin] {
 			fail(w, http.StatusForbidden, "origin is not allowed")
@@ -153,8 +179,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			reply(w, http.StatusOK, map[string]any{
-				"capabilities":    map[string]bool{"packetLoss": s.packetLoss != nil, "networkIdentity": true},
-				"protocolVersion": ProtocolVersion, "region": map[string]string{"id": s.config.RegionID, "name": s.config.RegionName},
+				"applicationVersion": version.String,
+				"capabilities":       map[string]bool{"packetLoss": s.packetLoss != nil, "networkIdentity": true},
+				"protocolVersion":    ProtocolVersion, "region": map[string]string{"id": s.config.RegionID, "name": s.config.RegionName},
 				"limits": map[string]any{"maxDownloadBytes": s.config.MaxDownload, "maxUploadBytes": s.config.MaxUpload, "maxConcurrentTransfers": s.config.MaxConcurrent},
 			})
 		case "/v1/network":
@@ -169,16 +196,39 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) acquire(w http.ResponseWriter) bool {
+func (s *Server) acquire(w http.ResponseWriter, r *http.Request) bool {
+	ip := s.clientIP(r)
+	s.clientsMu.Lock()
+	if s.clients[ip] >= s.config.MaxPerClient {
+		s.clientsMu.Unlock()
+		s.rejected.Add(1)
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusTooManyRequests, "client transfer limit reached")
+		return false
+	}
 	select {
 	case s.slots <- struct{}{}:
+		s.clients[ip]++
+		s.clientsMu.Unlock()
 		s.transfers.Add(1)
 		return true
 	default:
+		s.clientsMu.Unlock()
 		s.rejected.Add(1)
 		w.Header().Set("Retry-After", "5")
 		fail(w, http.StatusServiceUnavailable, "server is busy")
 		return false
+	}
+}
+
+func (s *Server) release(r *http.Request) {
+	ip := s.clientIP(r)
+	s.clientsMu.Lock()
+	defer s.clientsMu.Unlock()
+	<-s.slots
+	s.clients[ip]--
+	if s.clients[ip] == 0 {
+		delete(s.clients, ip)
 	}
 }
 
@@ -207,10 +257,10 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request, started time.T
 	}
 	// Zero-byte latency probes stay responsive when transfer slots are occupied.
 	if n > 0 {
-		if !s.acquire(w) {
+		if !s.acquire(w, r) {
 			return
 		}
-		defer func() { <-s.slots }()
+		defer s.release(r)
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(n, 10))
@@ -239,10 +289,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusRequestEntityTooLarge, "upload exceeds payload limit")
 		return
 	}
-	if !s.acquire(w) {
+	if !s.acquire(w, r) {
 		return
 	}
-	defer func() { <-s.slots }()
+	defer s.release(r)
 	r.Body = http.MaxBytesReader(w, r.Body, s.config.MaxUpload)
 	defer r.Body.Close()
 	// Stream to discard: success means every byte was received, never just the headers.

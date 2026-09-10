@@ -29,6 +29,10 @@ go run ./cmd/speedtest-api
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `WEBRTC_LISTEN_ADDR` | `:8081` | Single IPv4 UDP port shared by WebRTC sessions; empty disables packet loss |
 | `WEBRTC_PUBLIC_IP` | empty | Optional public IPv4 address to advertise behind 1:1 NAT; external UDP port must match the listening port |
+| `SPEEDTEST_ENV` | `development` | Set `production` to enforce non-local region identity, HTTPS origins and a private metrics listener |
+| `METRICS_LISTEN_ADDR` | empty | Optional private IP:port for metrics; required in production (for example `127.0.0.1:9090`) |
+| `MAX_TRANSFERS_PER_CLIENT` | `16` | Active HTTP transfers per resolved client IP; 1–1024 |
+| `MAX_WEBRTC_PER_CLIENT` | `16` | Active packet-loss sessions per resolved client IP; 1–1024 |
 | `MAX_WEBRTC_SESSIONS` | `64` | Maximum WebRTC sessions per process; 1–1024 |
 | `REGION_ID` | `local` | Stable lowercase ID, matching the UI registry; 1–63 letters/digits/hyphens |
 | `REGION_NAME` | `Local development` | Human-readable server name |
@@ -40,7 +44,7 @@ go run ./cmd/speedtest-api
 | `TRUSTED_PROXY_CIDRS` | empty | Comma-separated trusted proxy CIDRs used only to resolve network identity from `X-Forwarded-For`; default routes are rejected |
 | `REQUEST_TIMEOUT` | `30s` | HTTP read/write deadline; 1 second–2 minutes |
 
-One test normally uses four parallel transfers. This concurrency limit is per request, not per user; simultaneous tests share the same server capacity. Requests exceeding capacity receive `503` and `Retry-After: 5`. Zero-byte probes bypass transfer slots so loaded latency remains measurable. Configuration errors fail startup.
+One test normally uses four parallel transfers. This concurrency limit is per request, not per user; simultaneous tests share the same server capacity. Requests exceeding global capacity receive `503`; the per-client bound returns `429`. Both include `Retry-After: 5`. Client counters exist only while transfers are active. Shared NAT addresses share this bound. Zero-byte probes bypass transfer slots so loaded latency remains measurable. Configuration errors fail startup.
 
 ## HTTP protocol, version 1
 
@@ -53,7 +57,7 @@ One test normally uses four parallel transfers. This concurrency limit is per re
 | `POST /v1/packet-loss` | JSON WebRTC offer → JSON answer. Requires an allowed browser Origin; SDP body capped at 32 KiB. 501 when disabled, 503 when session capacity is reached. |
 | `GET /healthz` | Process liveness |
 | `GET /readyz` | Readiness; 503 while draining |
-| `GET /metrics` | Prometheus counters for accepted/rejected transfers and payload bytes, plus active transfer count |
+| `GET /metrics` | Available only on the private listener when `METRICS_LISTEN_ADDR` is set; Prometheus counters for accepted/rejected transfers and payload bytes, plus active transfer count |
 
 `OPTIONS` supports the applicable method and the `Content-Type` request header. Methods are checked explicitly; `HEAD` is not a measurement. Every response includes `X-Speedtest-Region` and `Cache-Control: no-store, no-transform`. Allowed browser origins receive CORS and `Timing-Allow-Origin` headers. Downloads also include `Content-Length`, `Server-Timing: processing;dur=...`, and `X-Accel-Buffering: no`.
 
@@ -65,7 +69,7 @@ Give each regional API its own HTTPS origin. Set its `REGION_ID` and `ALLOWED_OR
 
 When deployment work is added, the regional reverse proxy must preserve streaming, disable response/request buffering and compression, disable caching/CDN acceleration, allow the configured body sizes, and preserve CORS/timing/identity headers. Otherwise the test measures the proxy or fails protocol validation. TLS terminates at that regional proxy. The UI accepts plain HTTP only for localhost development on an HTTP page.
 
-CORS controls browser access; it is not client authentication. Origin-free CLI requests are accepted for HTTP measurements; WebRTC offers require an allowed Origin. Public exposure will need an operator-selected ingress abuse policy and private access to metrics; that deployment policy is outside this source-only phase.
+CORS controls browser access; it is not client authentication. Origin-free CLI requests are accepted for HTTP measurements; WebRTC offers require an allowed Origin. Production mode requires metrics on a separate private listener. Public exposure still needs an ingress request/connection abuse policy, network isolation and appropriate egress bandwidth; CORS and per-client transfer bounds do not prevent distributed abuse. See the [production checklist](production.md).
 
 ## Validate
 
@@ -83,7 +87,7 @@ This server and the companion browser engine implement the HTTP protocol documen
 
 The server uses Pion WebRTC with ICE-lite on a shared IPv4 UDP socket. It never initiates ICE connectivity checks to addresses supplied in an offer. A browser creates exactly one unordered data channel named `packet-loss-v1`, with `maxRetransmits: 0`. Each message is 64 bytes, beginning with a big-endian uint32 sequence in 0–999. Up to 1,000 binary messages are echoed without alteration. Invalid channel settings, message sizes, sequence bounds or extra channels close the peer.
 
-Sessions expire after 20 seconds and close on connection failure or data-channel closure. The process limits active peers and allows up to four sessions per HTTP socket source IP; IP counters exist in memory only while sessions are active. This is a conservative abuse bound, not user authentication. A reverse proxy or shared NAT can concentrate clients behind one source IP; plan trusted client-address handling/rate policies when adding the deployment layer. The application does not trust arbitrary `X-Forwarded-For` headers.
+Sessions expire after 20 seconds and close on connection failure or data-channel closure. The process limits active peers and allows up to `MAX_WEBRTC_PER_CLIENT` sessions per resolved client IP (16 by default); IP counters exist in memory only while sessions are active. This is a conservative abuse bound, not user authentication. A shared NAT concentrates clients behind one IP. Configure only actual proxy CIDRs in `TRUSTED_PROXY_CIDRS`; the same validated forwarding chain is used for network identity, HTTP quotas and WebRTC quotas. The application does not trust arbitrary `X-Forwarded-For` headers.
 
 The HTTPS signaling request and UDP packets **must reach the same process**. A Kubernetes HTTP load balancer and an independently balanced UDP Service do not establish that affinity. Use a per-instance advertised UDP address/port or an affinity-aware routing design when deployment work begins. `WEBRTC_PUBLIC_IP` supports same-port 1:1 IPv4 NAT; it does not implement TURN, port rewriting, or shared UDP balancing. Browser ICE can connect directly to a publicly reachable ICE-lite server without an external STUN service. If UDP is blocked, the UI preserves HTTP results and marks packet loss unavailable.
 

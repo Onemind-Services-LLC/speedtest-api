@@ -161,3 +161,62 @@ func TestPacketLossDisabled(t *testing.T) {
 	}
 	app.ClosePacketLoss()
 }
+
+func TestPacketLossUsesTrustedClientQuotas(t *testing.T) {
+	config := DefaultConfig()
+	config.WebRTCAddress = "127.0.0.1:0"
+	config.TrustedProxies = []string{"127.0.0.1/32"}
+	config.MaxWebRTC = 3
+	config.MaxWebRTCPerClient = 1
+	app, err := New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.StartPacketLoss(); err != nil {
+		t.Fatal(err)
+	}
+	defer app.ClosePacketLoss()
+	client, err := webrtc.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if _, err := client.CreateDataChannel("packet-loss-v1", nil); err != nil {
+		t.Fatal(err)
+	}
+	offer, err := client.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(offer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	send := func(peer, forwarded string) int {
+		req := httptest.NewRequest("POST", "/v1/packet-loss", bytes.NewReader(body))
+		req.RemoteAddr = peer
+		req.Header.Set("Origin", "http://localhost:3000")
+		req.Header.Set("X-Forwarded-For", forwarded)
+		w := httptest.NewRecorder()
+		app.ServeHTTP(w, req)
+		return w.Code
+	}
+	if got := send("127.0.0.1:1234", "192.0.2.1"); got != 200 {
+		t.Fatalf("first client: %d", got)
+	}
+	if got := send("127.0.0.1:1234", "192.0.2.1"); got != 503 {
+		t.Fatalf("client quota: %d", got)
+	}
+	if got := send("127.0.0.1:1234", "192.0.2.2"); got != 200 {
+		t.Fatalf("second proxied client: %d", got)
+	}
+	if got := send("192.0.2.1:1234", "192.0.2.3"); got != 503 {
+		t.Fatalf("spoofed client bypassed quota: %d", got)
+	}
+	app.ClosePacketLoss()
+	app.packetLoss.mu.Lock()
+	defer app.packetLoss.mu.Unlock()
+	if len(app.packetLoss.perIP) != 0 {
+		t.Fatal("client quota leaked after shutdown")
+	}
+}
