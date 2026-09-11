@@ -1,6 +1,6 @@
 # Production preparation
 
-Version 0.1.0 is protocol-compatible with Speedtest UI 0.1.0. The application version is returned by `/v1/info`; the wire protocol remains version 1. Publishing a release does not deploy a regional server.
+Version 0.1.1 is protocol-compatible with Speedtest UI 0.1.1 and earlier 0.1.x clients. The application version is returned by `/v1/info`; the wire protocol remains version 1. Publishing a release does not deploy a regional server.
 
 ## Deployment requirements
 
@@ -30,7 +30,7 @@ Before deployment approval, repeat tests through the actual HTTPS endpoint from 
 
 ## Security and release checks
 
-CI runs module verification, Go vet, race tests, concurrent transfer/shutdown checks and `govulncheck`. Weekly CI catches advisory changes. Protected pushes build once, smoke-test and scan that OCI artifact with Trivy, then publish and verify a keyless Cosign signature. The image includes SBOM and provenance attestations. Protected `v0.1.0` tags publish image tag `0.1.0`; deployments should pin the signed digest. The shared builder publishes Linux AMD64. ARM64 remains a deployment-specific build and validation step.
+CI runs module verification, Go vet, race tests, concurrent transfer/shutdown checks and `govulncheck`. Weekly CI catches advisory changes. Protected pushes build once, smoke-test and scan that OCI artifact with Trivy, then publish and verify a keyless Cosign signature. The image includes SBOM and provenance attestations. Protected version tags publish matching image tags without the `v` prefix; deployments should pin the signed digest. Container images, release binaries and VM bundles target Linux AMD64. Published GitHub releases also receive the verified binary archive and its SHA-256 checksum file.
 
 Go 1.27.1 and all imported runtime modules were checked against available updates. `govulncheck` found no affected symbols or imported packages. Its module inventory lists [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932), covering the unused `golang.org/x/crypto/openpgp` packages; these packages are absent from the application's dependency graph. There is no upstream fixed version. Do not add OpenPGP imports or suppress unrelated advisories.
 

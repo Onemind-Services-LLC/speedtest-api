@@ -4,7 +4,7 @@ Deployed for region `blr`, display name **Bangalore**, at **https://blr.speedtes
 
 ## Bundle contents
 
-Each architecture-specific archive contains a static API binary, checksums and build provenance, the September 2026 DB-IP ASN Lite database and attribution, service units, an installer, a certificate publication hook, and the UI region entry. AMD64 and ARM64 bundles share the same source; AMD64 is validated on the deployed VM, while ARM64 is cross-compiled. These are deployment artifacts; no versioned application release is created.
+The Linux AMD64 archive contains a static API binary, checksums and build provenance, the September 2026 DB-IP ASN Lite database and attribution, service units, an installer, a certificate publication hook, and the UI region entry. AMD64 is validated on the deployed VM. Creating a deployment bundle does not publish a GitHub release.
 
 ## Host preparation
 

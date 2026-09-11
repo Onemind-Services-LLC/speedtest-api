@@ -10,7 +10,7 @@ expected_asn=ab07c764a10c4f8c2f3539377fa86e5c928243084aafd359d1be4cb8543d7406
 printf '%s  %s\n' "$expected_asn" "$asn_database" | sha256sum --check --status || { echo 'ASN database checksum does not match the reviewed September 2026 dataset.' >&2; exit 1; }
 cd "$repo"
 go mod verify
-for architecture in amd64 arm64; do
+for architecture in amd64; do
  stage=$(mktemp -d "$output/.build-$architecture.XXXXXXXX")
  trap 'rm -rf "$stage"' EXIT
  CGO_ENABLED=0 GOOS=linux GOARCH="$architecture" go build -buildvcs=false -trimpath -ldflags='-s -w' -o "$stage/speedtest-api" ./cmd/speedtest-api
@@ -41,4 +41,4 @@ PY_HASH
  rm -rf "$stage"
  trap - EXIT
  done
-(cd "$output" && sha256sum speedtest-blr-linux-amd64.tar.gz speedtest-blr-linux-arm64.tar.gz > SHA256SUMS && sha256sum --check SHA256SUMS)
+(cd "$output" && sha256sum speedtest-blr-linux-amd64.tar.gz > SHA256SUMS && sha256sum --check SHA256SUMS)
