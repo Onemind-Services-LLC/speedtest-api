@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -16,7 +17,9 @@ var traceIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[
 func requestTraceID(query url.Values, name string) string {
 	values := query[name]
 	if len(values) == 1 && traceIDPattern.MatchString(values[0]) {
-		return values[0]
+		// Keep explicit log encoding in addition to the UUID allowlist, so
+		// alternate handlers and future validation changes remain safe.
+		return strings.ReplaceAll(strings.ReplaceAll(values[0], "\n", ""), "\r", "")
 	}
 	return ""
 }
