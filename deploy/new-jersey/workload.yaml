@@ -74,7 +74,7 @@ spec:
               mountPath: /data
       containers:
         - name: api
-          image: registry.onemindservices.com/speedtest/api:direct-lb-20260911@sha256:4bfafbe60ea8e2f8acb7d768e0fb737b9c0cbbfea93b6ad5678b74477bc15cf5
+          image: registry.onemindservices.com/speedtest/api:sha-8008bab795f6e50994a7a6546f17821ac2a3c104@sha256:ec823cd68ec08e2851bdc1febcf3c7b351752775a6c85d7e0c2d98dea4472a45
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

@@ -24,7 +24,7 @@ kubectl --kubeconfig /home/asaharan/clusters/production-apps/kubeconfig.yaml -n 
 
 Update both manifest copies together. Applying this Kustomization does not delete unrelated resources. It contains no old ingress manifests to recreate.
 
-The deployed infrastructure build is `registry.onemindservices.com/speedtest/api:direct-lb-20260911@sha256:4bfafbe60ea8e2f8acb7d768e0fb737b9c0cbbfea93b6ad5678b74477bc15cf5`. Its application version remains `0.1.0`; no new Git tag or GitHub release was published for the cutover. The ASN init image remains pinned to the reviewed September 2026 DB-IP database.
+The deployed API build with anonymous session/test request correlation is `registry.onemindservices.com/speedtest/api:sha-8008bab795f6e50994a7a6546f17821ac2a3c104@sha256:ec823cd68ec08e2851bdc1febcf3c7b351752775a6c85d7e0c2d98dea4472a45`. Its application version remains `0.1.0`; no new Git tag or GitHub release was published for the cutover. The ASN init image remains pinned to the reviewed September 2026 DB-IP database.
 
 ## TLS, identity and limits
 
