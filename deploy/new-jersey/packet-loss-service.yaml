@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: speedtest-api-packet-loss
+  namespace: speedtest
+  labels:
+    app.kubernetes.io/name: speedtest-api
+  annotations:
+    service.beta.kubernetes.io/openstack-internal-load-balancer: 'false'
+    loadbalancer.openstack.org/enable-health-monitor: 'true'
+    loadbalancer.openstack.org/node-selector: node-role.kubernetes.io/worker=true
+    loadbalancer.openstack.org/load-balancer-id: e9e7598d-182b-42a8-a6d4-c42ce8605f22
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ipFamilyPolicy: SingleStack
+  ipFamilies:
+  - IPv4
+  selector:
+    app.kubernetes.io/name: speedtest-api
+  ports:
+  - name: webrtc
+    port: 8081
+    targetPort: webrtc
+    protocol: UDP

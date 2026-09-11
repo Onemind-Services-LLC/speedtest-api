@@ -27,6 +27,13 @@ go run ./cmd/speedtest-api
 | --- | --- | --- |
 | `LOG_LEVEL` | `info` | JSON log threshold: `debug`, `info`, `warn`, `error` |
 | `LISTEN_ADDR` | `:8080` | HTTP listen address |
+| `TLS_LISTEN_ADDR` | empty | Optional native HTTPS listener, for example `:8443`; HTTP/1.1, TLS 1.2+ |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE` | empty | Mounted PEM certificate chain and key; reloaded every 30 seconds |
+| `PUBLIC_ORIGIN` | empty | Exact HTTPS API origin without a trailing slash; required with native TLS |
+| `PROXY_PROTOCOL_TRUSTED_CIDRS` | empty | Trusted TCP load-balancer source ranges; enables mandatory PROXY headers on TLS and redirect listeners |
+| `HTTP_REDIRECT_ADDR` | empty | Optional HTTP-to-HTTPS redirect listener, for example `:8082`; requires native TLS |
+| `ACME_CHALLENGE_DIR` | empty | Optional HTTP-01 token directory served only on the HTTP redirect listener; confined paths and an 8 KiB response limit |
+| `BROWSER_REDIRECT_URL` | empty | Optional HTTPS UI origin for top-level browser GET navigations only |
 | `WEBRTC_LISTEN_ADDR` | `:8081` | Single IPv4 UDP port shared by WebRTC sessions; empty disables packet loss |
 | `WEBRTC_PUBLIC_IP` | empty | Optional public IPv4 address to advertise behind 1:1 NAT; external UDP port must match the listening port |
 | `SPEEDTEST_ENV` | `development` | Set `production` to enforce non-local region identity, HTTPS origins and a private metrics listener |
@@ -67,7 +74,7 @@ Downloads reuse a 1 MiB random buffer; memory does not grow with requested paylo
 
 Give each regional API its own HTTPS origin. Set its `REGION_ID` and `ALLOWED_ORIGINS`, then add the same identity and endpoint origin to the UI's `public/config.json`. The UI will be hosted on Vercel and contacts those origins directly. Set `ALLOWED_ORIGINS` to its exact production HTTPS origin, plus any explicitly enabled preview origins. Measurement traffic does not pass through Vercel. Updating the UI’s bundled registry on Vercel requires a new deployment. A region identity mismatch is treated as unavailable.
 
-When deployment work is added, the regional reverse proxy must preserve streaming, disable response/request buffering and compression, disable caching/CDN acceleration, allow the configured body sizes, and preserve CORS/timing/identity headers. Otherwise the test measures the proxy or fails protocol validation. TLS terminates at that regional proxy. The UI accepts plain HTTP only for localhost development on an HTTP page.
+Regional deployments can terminate TLS in the API behind a TCP LoadBalancer or at a regional reverse proxy. A reverse proxy must preserve streaming, disable response/request buffering and compression, disable caching/CDN acceleration, allow the configured body sizes, and preserve CORS/timing/identity headers. Otherwise the test measures the proxy or fails protocol validation. Native TLS uses independent HTTP/1.1 connections, reloads mounted certificates without restarting transfers, and provides request limits and browser navigation redirects; see [production configuration](production.md). The UI accepts plain HTTP only for localhost development on an HTTP page.
 
 CORS controls browser access; it is not client authentication. Origin-free CLI requests are accepted for HTTP measurements; WebRTC offers require an allowed Origin. Production mode requires metrics on a separate private listener. Public exposure still needs an ingress request/connection abuse policy, network isolation and appropriate egress bandwidth; CORS and per-client transfer bounds do not prevent distributed abuse. See the [production checklist](production.md).
 

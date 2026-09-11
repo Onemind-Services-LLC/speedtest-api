@@ -1,0 +1,14 @@
+[Unit]
+Description=Renew Bangalore Speedtest TLS certificate
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --cert-name blr.speedtest.onemindservices.cloud --quiet
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/letsencrypt /var/lib/letsencrypt /var/lib/speedtest-acme /var/log/letsencrypt /etc/speedtest/tls
+NoNewPrivileges=true

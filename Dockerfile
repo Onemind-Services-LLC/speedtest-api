@@ -15,5 +15,5 @@ LABEL org.opencontainers.image.title="OneMind Services Speedtest API" \
       org.opencontainers.image.source="https://github.com/Onemind-Services-LLC/speedtest-api"
 COPY --from=build /out/speedtest-api /speedtest-api
 USER 65532:65532
-EXPOSE 8080/tcp 8081/udp
+EXPOSE 8080/tcp 8081/udp 8443/tcp 8082/tcp
 ENTRYPOINT ["/speedtest-api"]

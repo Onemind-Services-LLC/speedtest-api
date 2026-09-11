@@ -15,6 +15,14 @@ import (
 
 // Config describes one regional endpoint. There is no shared database or registry.
 type Config struct {
+	TLSAddress         string
+	TLSCertFile        string
+	TLSKeyFile         string
+	ACMEChallengeDir   string
+	ProxyProtocolCIDRs []string
+	PublicOrigin       string
+	BrowserRedirectURL string
+	RedirectAddress    string
 	Environment        string
 	MetricsAddress     string
 	MaxPerClient       int
@@ -63,6 +71,9 @@ func ConfigFromEnv() (Config, error) {
 		}
 	}
 	for name, target := range map[string]*string{
+		"TLS_LISTEN_ADDR": &c.TLSAddress, "TLS_CERT_FILE": &c.TLSCertFile, "TLS_KEY_FILE": &c.TLSKeyFile,
+		"ACME_CHALLENGE_DIR": &c.ACMEChallengeDir,
+		"PUBLIC_ORIGIN":      &c.PublicOrigin, "BROWSER_REDIRECT_URL": &c.BrowserRedirectURL, "HTTP_REDIRECT_ADDR": &c.RedirectAddress,
 		"SPEEDTEST_ENV": &c.Environment, "METRICS_LISTEN_ADDR": &c.MetricsAddress,
 		"WEBRTC_LISTEN_ADDR": &c.WebRTCAddress, "WEBRTC_PUBLIC_IP": &c.WebRTCPublicIP,
 		"ASN_DATABASE_PATH": &c.ASNDatabasePath,
@@ -74,6 +85,11 @@ func ConfigFromEnv() (Config, error) {
 	}
 	if value := os.Getenv("TRUSTED_PROXY_CIDRS"); value != "" {
 		c.TrustedProxies = strings.Split(value, ",")
+	}
+	if value := os.Getenv("PROXY_PROTOCOL_TRUSTED_CIDRS"); value != "" {
+		for _, cidr := range strings.Split(value, ",") {
+			c.ProxyProtocolCIDRs = append(c.ProxyProtocolCIDRs, strings.TrimSpace(cidr))
+		}
 	}
 	if value, ok := os.LookupEnv("ALLOWED_ORIGINS"); ok {
 		c.AllowedOrigins = strings.Split(value, ",")
@@ -114,6 +130,9 @@ func ConfigFromEnv() (Config, error) {
 }
 
 func (c Config) Validate() error {
+	if err := c.validateTLS(); err != nil {
+		return err
+	}
 	if c.Environment != "development" && c.Environment != "production" {
 		return fmt.Errorf("SPEEDTEST_ENV must be development or production")
 	}
@@ -181,6 +200,48 @@ func (c Config) Validate() error {
 		ip := net.ParseIP(host)
 		if c.Environment == "production" && (u.Scheme != "https" || host == "localhost" || strings.HasSuffix(host, ".localhost") || (ip != nil && (ip.IsLoopback() || ip.IsUnspecified()))) {
 			return fmt.Errorf("production ALLOWED_ORIGINS must use HTTPS without loopback hosts")
+		}
+	}
+	return nil
+}
+
+func (c Config) validateTLS() error {
+	if c.TLSAddress == "" {
+		if c.TLSCertFile != "" || c.TLSKeyFile != "" || c.ACMEChallengeDir != "" || len(c.ProxyProtocolCIDRs) != 0 || c.RedirectAddress != "" || c.PublicOrigin != "" || c.BrowserRedirectURL != "" {
+			return fmt.Errorf("public listener settings require TLS_LISTEN_ADDR")
+		}
+		return nil
+	}
+	if c.TLSCertFile == "" || c.TLSKeyFile == "" || c.PublicOrigin == "" {
+		return fmt.Errorf("TLS requires TLS_CERT_FILE, TLS_KEY_FILE and PUBLIC_ORIGIN")
+	}
+	if c.ACMEChallengeDir != "" && c.RedirectAddress == "" {
+		return fmt.Errorf("ACME_CHALLENGE_DIR requires HTTP_REDIRECT_ADDR")
+	}
+	for _, address := range []string{c.TLSAddress, c.RedirectAddress} {
+		if address != "" {
+			_, port, err := net.SplitHostPort(address)
+			if err != nil || port == "" {
+				return fmt.Errorf("public listener addresses must include a port")
+			}
+		}
+	}
+	for _, value := range c.ProxyProtocolCIDRs {
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil || prefix.Bits() == 0 {
+			return fmt.Errorf("PROXY_PROTOCOL_TRUSTED_CIDRS requires explicit non-default CIDR ranges")
+		}
+	}
+	for name, raw := range map[string]string{"PUBLIC_ORIGIN": c.PublicOrigin, "BROWSER_REDIRECT_URL": c.BrowserRedirectURL} {
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" || strings.Contains(u.Host, "*") || u.User != nil || u.Fragment != "" || u.RawQuery != "" || u.ForceQuery || (u.Path != "" && u.Path != "/") {
+			return fmt.Errorf("%s must be an HTTPS origin", name)
+		}
+		if name == "PUBLIC_ORIGIN" && u.Path != "" {
+			return fmt.Errorf("PUBLIC_ORIGIN must not have a trailing slash")
 		}
 	}
 	return nil

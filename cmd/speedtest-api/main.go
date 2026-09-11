@@ -43,10 +43,26 @@ func run() error {
 	if metrics := app.MetricsServer(); metrics != nil {
 		servers = append(servers, metrics)
 	}
-	errorsCh := make(chan error, len(servers))
+	public, err := newPublicServers(ctx, app, c)
+	if err != nil {
+		return err
+	}
+	errorsCh := make(chan error, len(servers)+len(public))
 	for _, listener := range servers {
 		defer listener.Close()
 		go func() { errorsCh <- listener.ListenAndServe() }()
+	}
+	for _, listener := range public {
+		servers = append(servers, listener.server)
+		defer listener.server.Close()
+		defer listener.listener.Close()
+		go func() {
+			if listener.secure {
+				errorsCh <- listener.server.ServeTLS(listener.listener, "", "")
+			} else {
+				errorsCh <- listener.server.Serve(listener.listener)
+			}
+		}()
 	}
 	slog.Info("speedtest API starting", "address", c.Address, "udp_address", c.WebRTCAddress, "region", c.RegionID, "protocol", server.ProtocolVersion, "log_level", c.LogLevel.String())
 	select {

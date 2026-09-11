@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: speedtest-api-public
+  namespace: speedtest
+  labels:
+    app.kubernetes.io/name: speedtest-api
+  annotations:
+    service.beta.kubernetes.io/openstack-internal-load-balancer: 'false'
+    loadbalancer.openstack.org/enable-health-monitor: 'true'
+    loadbalancer.openstack.org/node-selector: node-role.kubernetes.io/worker=true
+    loadbalancer.openstack.org/proxy-protocol: v2
+    external-dns.alpha.kubernetes.io/hostname: nnj.speedtest.onemindservices.cloud
+    external-dns.alpha.kubernetes.io/cloudflare-proxied: 'false'
+    external-dns.alpha.kubernetes.io/ttl: '300'
+    loadbalancer.openstack.org/load-balancer-id: e9e7598d-182b-42a8-a6d4-c42ce8605f22
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  ipFamilyPolicy: SingleStack
+  ipFamilies:
+  - IPv4
+  selector:
+    app.kubernetes.io/name: speedtest-api
+  ports:
+  - name: http-redirect
+    port: 80
+    targetPort: http-redirect
+  - name: https
+    port: 443
+    targetPort: https

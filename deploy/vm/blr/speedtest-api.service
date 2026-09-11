@@ -1,0 +1,49 @@
+[Unit]
+Description=OneMind Speedtest API - Bangalore
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=speedtest
+Group=speedtest
+EnvironmentFile=/etc/speedtest/api.env
+ExecStart=/opt/speedtest/current/speedtest-api
+ExecStartPost=/usr/bin/curl --fail --silent --show-error --retry 15 --retry-connrefused --retry-delay 1 --max-time 2 http://127.0.0.1:8080/readyz
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=40
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# Go/Pion needs netlink to discover local interfaces for WebRTC ICE.
+# CAP_NET_ADMIN remains excluded, so this does not permit network reconfiguration.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+MemoryMax=512M
+CPUQuota=200%
+TasksMax=256
+LimitNOFILE=8192
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

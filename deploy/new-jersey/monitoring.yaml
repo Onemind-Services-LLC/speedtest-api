@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: speedtest-api
+  labels:
+    release: rancher-monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: speedtest-api
+      app.kubernetes.io/component: metrics
+  namespaceSelector:
+    matchNames: [speedtest]
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 5s
+      path: /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: speedtest-api
+  labels:
+    release: rancher-monitoring
+spec:
+  groups:
+    - name: speedtest-api
+      rules:
+        - alert: SpeedtestAPIUnavailable
+          expr: up{namespace="speedtest",service="speedtest-api-metrics"} == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: New Jersey Speedtest API is unavailable
+            description: Prometheus has been unable to scrape the private API listener for five minutes. Check the deployment, probes and network policy.

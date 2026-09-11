@@ -134,3 +134,7 @@ dist
 # Go build/test artifacts
 /speedtest-api
 /coverage.out
+
+# Deployment helper bytecode
+__pycache__/
+*.pyc

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: speedtest
+resources:
+- workload.yaml
+- public-service.yaml
+- packet-loss-service.yaml
+- networkpolicy.yaml
+- certificate.yaml
+- monitoring.yaml
+configMapGenerator:
+- name: speedtest-api-config
+  envs:
+  - production.env

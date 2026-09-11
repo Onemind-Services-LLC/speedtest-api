@@ -110,7 +110,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("X-Speedtest-Region", s.config.RegionID)
 	h.Set("X-Accel-Buffering", "no")
-	h.Set("Vary", "Origin")
+	h.Add("Vary", "Origin")
 	if r.URL.Path == "/metrics" && s.config.MetricsAddress != "" {
 		fail(w, http.StatusNotFound, "endpoint not found")
 		return

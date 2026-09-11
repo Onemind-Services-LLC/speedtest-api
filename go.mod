@@ -6,6 +6,7 @@ require (
 	github.com/oschwald/maxminddb-golang/v2 v2.6.0
 	github.com/pion/ice/v4 v4.4.2
 	github.com/pion/webrtc/v4 v4.2.20
+	github.com/pires/go-proxyproto v0.15.0
 )
 
 require (

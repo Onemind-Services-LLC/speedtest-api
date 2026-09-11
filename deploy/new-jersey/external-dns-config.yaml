@@ -1,0 +1,14 @@
+# HelmChartConfig augments the existing RKE2-managed HelmChart; preserve every existing zone.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: external-dns
+  namespace: kube-public
+spec:
+  valuesContent: |-
+    domainFilters:
+      - cloudmylab.com
+      - edu-therapeutics.com
+      - onemindservices.com
+      - onemindc.com
+      - onemindservices.cloud

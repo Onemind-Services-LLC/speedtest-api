@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: speedtest-api
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speedtest-api
+  labels:
+    app.kubernetes.io/name: speedtest-api
+    app.kubernetes.io/version: 0.1.0
+spec:
+  # HTTP signaling and UDP must reach the same process. Do not scale or use HPA.
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 300
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: speedtest-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: speedtest-api
+        app.kubernetes.io/version: 0.1.0
+    spec:
+      serviceAccountName: speedtest-api
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 40
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+        node-role.kubernetes.io/worker: "true"
+      imagePullSecrets:
+        - name: onemindservices
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tls
+          secret:
+            secretName: speedtest-api-tls
+            defaultMode: 0440
+        - name: asn-database
+          emptyDir:
+            sizeLimit: 32Mi
+      initContainers:
+        - name: asn-database
+          image: registry.onemindservices.com/speedtest/asn:2026.09@sha256:d23bb84e1b2cb450384ca4aa956ed2c5f5213cc74ee713a33ac88ce82be0150c
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: asn-database
+              mountPath: /data
+      containers:
+        - name: api
+          image: registry.onemindservices.com/speedtest/api:direct-lb-20260911@sha256:4bfafbe60ea8e2f8acb7d768e0fb737b9c0cbbfea93b6ad5678b74477bc15cf5
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          envFrom:
+            - configMapRef:
+                name: speedtest-api-config
+          volumeMounts:
+            - name: asn-database
+              mountPath: /data
+              readOnly: true
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: METRICS_LISTEN_ADDR
+              value: "$(POD_IP):9090"
+          ports:
+            - name: https
+              containerPort: 8443
+            - name: http-redirect
+              containerPort: 8082
+            - name: http
+              containerPort: 8080
+            - name: webrtc
+              containerPort: 8081
+              protocol: UDP
+            - name: metrics
+              containerPort: 9090
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: speedtest-api-metrics
+  labels:
+    app.kubernetes.io/name: speedtest-api
+    app.kubernetes.io/component: metrics
+spec:
+  selector:
+    app.kubernetes.io/name: speedtest-api
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
