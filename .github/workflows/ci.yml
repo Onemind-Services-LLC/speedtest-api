@@ -5,6 +5,8 @@ on:
   push:
     branches: [master]
     tags: ['v*']
+  release:
+    types: [published]
   schedule:
     - cron: '13 5 * * 3'
   workflow_dispatch:
@@ -44,6 +46,53 @@ jobs:
       - run: go test -race -count=1 ./...
       - name: Verify simultaneous transfers and graceful shutdown
         run: python3 tests/concurrency_smoke.py
+
+  binaries:
+    name: Linux AMD64 binary
+    needs: checks
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || 'ci-build' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build and verify binary archive
+        run: |
+          bash scripts/build-binary.sh
+          python3 tests/binary_smoke.py dist/binaries
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: speedtest-api-linux-amd64
+          path: dist/binaries/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release-binaries:
+    name: Attach binary to published release
+    needs: [checks, binaries]
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: speedtest-api-linux-amd64
+          path: binaries
+      - name: Verify and upload release assets
+        working-directory: binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          sha256sum --check --strict binary-SHA256SUMS
+          gh release upload "$RELEASE_TAG" ./*.tar.gz binary-SHA256SUMS --clobber
 
   container:
     name: Pull request container verification

@@ -100,7 +100,7 @@ The HTTPS signaling request and UDP packets **must reach the same process**. A K
 
 ## Capacity boundary
 
-This source has bounded transfers and UDP sessions, graceful shutdown, and integration tests. It has not been validated for millions of simultaneous tests. Public deployment still needs measured capacity targets, regional sizing, telemetry, an ingress abuse policy and a validated UDP affinity design. Kubernetes manifests are intentionally deferred.
+This source has bounded transfers and UDP sessions, graceful shutdown, and integration tests. It has not been validated for millions of simultaneous tests. Public deployment still needs measured capacity targets, regional sizing, telemetry and an abuse policy. Current [New Jersey manifests](../deploy/new-jersey/README.md) and the [Bangalore VM deployment](../deploy/vm/blr/README.md) document the installed configurations and validation limits.
 
 ## Docker image and GitHub Actions
 
@@ -108,7 +108,11 @@ This source has bounded transfers and UDP sessions, graceful shutdown, and integ
 
 Successful protected pushes to `master` publish `registry.onemindservices.com/speedtest/api:master` and a full `sha-<commit>` tag. Protected version tags (`v1.2.3`) publish the corresponding version. The shared builder currently produces Linux AMD64 images; the Dockerfile also supports ARM64 cross-compilation. Pull requests, unprotected pushes and manual runs build and smoke-test locally without receiving registry credentials or publishing.
 
-The registry must have a `speedtest` project. Provide the organization’s `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets to this repository with permission to push `speedtest/api`. The workflow uses the organization’s `ci-test` and `ci-build` runners; pull requests from forks use GitHub-hosted runners. Kubernetes packaging remains deferred.
+CI also packages a static Linux AMD64 Go binary as `speedtest-api_v<VERSION>_linux_amd64.tar.gz`, with its README and build metadata, and produces `binary-SHA256SUMS`. It validates the packaged executable's architecture, static linkage, reported version, exact upload/download behavior and clean shutdown before retaining the files as a workflow artifact. `bash scripts/build-binary.sh` builds the same archive locally.
+
+Publishing a GitHub release triggers the checks and attaches that archive and its separate binary checksum file to the existing release. The tag must match `internal/version/VERSION`. Release attachment is the only new job with repository write permission; ordinary pushes and manual CI runs cannot create or publish releases. No ARM64 release binary is produced. Publishing a release does not deploy either region.
+
+The registry must have a `speedtest` project. Provide the organization’s `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets to this repository with permission to push `speedtest/api`. The workflow uses the organization’s `ci-test` and `ci-build` runners; pull requests from forks use GitHub-hosted runners.
 
 The image is built from a pinned Go base and contains only the static application binary, running as UID/GID 65532. The Docker build context allows only the Go build inputs, excluding local environment files, credentials and development artifacts.
 
