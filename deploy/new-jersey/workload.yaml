@@ -10,7 +10,7 @@ metadata:
   name: speedtest-api
   labels:
     app.kubernetes.io/name: speedtest-api
-    app.kubernetes.io/version: 0.1.0
+    app.kubernetes.io/version: 0.1.1
 spec:
   # HTTP signaling and UDP must reach the same process. Do not scale or use HPA.
   replicas: 1
@@ -25,7 +25,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: speedtest-api
-        app.kubernetes.io/version: 0.1.0
+        app.kubernetes.io/version: 0.1.1
     spec:
       serviceAccountName: speedtest-api
       automountServiceAccountToken: false
@@ -74,7 +74,7 @@ spec:
               mountPath: /data
       containers:
         - name: api
-          image: registry.onemindservices.com/speedtest/api:sha-8008bab795f6e50994a7a6546f17821ac2a3c104@sha256:ec823cd68ec08e2851bdc1febcf3c7b351752775a6c85d7e0c2d98dea4472a45
+          image: registry.onemindservices.com/speedtest/api:0.1.1@sha256:476c3cf9c34924d58810f6f77c8428e5a16870b7fa603ef62b07971d658918ec
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
