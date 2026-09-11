@@ -145,7 +145,15 @@ jobs:
           path: ${{ runner.temp }}/container
       - name: Install OCI tools
         run: |
-          sudo apt-get update -qq
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+            if test -f "$source"; then
+              sudo sed -i \
+                -e 's|http://archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+                -e 's|http://security.ubuntu.com/ubuntu|https://security.ubuntu.com/ubuntu|g' \
+                "$source"
+            fi
+          done
+          sudo apt-get -o APT::Update::Error-Mode=any -o Acquire::Retries=3 update -qq
           sudo apt-get install -y --no-install-recommends skopeo
       - name: Verify artifact and load image
         env:
@@ -163,7 +171,7 @@ jobs:
   scan:
     name: Shared container scan
     needs: build
-    uses: Onemind-Services-LLC/actions/.github/workflows/container-scan.yml@66ca2225b9030fa1a3f807cfb2464f8d7e87b596
+    uses: Onemind-Services-LLC/actions/.github/workflows/container-scan.yml@1733b3c0188e77ebd0e064504017f5983b0d738c
     with:
       artifact-id: ${{ needs.build.outputs.artifact-id }}
       digest: ${{ needs.build.outputs.digest }}
@@ -172,7 +180,7 @@ jobs:
     name: Shared container publication
     needs: [checks, build, smoke, scan]
     if: github.event_name == 'push' && github.ref_protected && github.repository == 'Onemind-Services-LLC/speedtest-api'
-    uses: Onemind-Services-LLC/actions/.github/workflows/container-publish.yml@66ca2225b9030fa1a3f807cfb2464f8d7e87b596
+    uses: Onemind-Services-LLC/actions/.github/workflows/container-publish.yml@1733b3c0188e77ebd0e064504017f5983b0d738c
     permissions:
       contents: read
       id-token: write
@@ -181,7 +189,7 @@ jobs:
       image: registry.onemindservices.com/speedtest/api
       artifact-id: ${{ needs.build.outputs.artifact-id }}
       digest: ${{ needs.build.outputs.digest }}
-      signer-identity: https://github.com/Onemind-Services-LLC/actions/.github/workflows/container-publish.yml@66ca2225b9030fa1a3f807cfb2464f8d7e87b596
+      signer-identity: https://github.com/Onemind-Services-LLC/actions/.github/workflows/container-publish.yml@1733b3c0188e77ebd0e064504017f5983b0d738c
     secrets:
       registry-username: ${{ secrets.DOCKER_USERNAME }}
       registry-password: ${{ secrets.DOCKER_PASSWORD }}
