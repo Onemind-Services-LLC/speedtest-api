@@ -7,9 +7,59 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestRequestLogsCorrelateTestsWithinClientSession(t *testing.T) {
+	s := testServer(t)
+	logs := captureLogs(s, slog.LevelInfo)
+	clientID := "873f962f-70c1-478e-9c67-5cfe3cd72cd5"
+	testID := "b66380e6-9474-461e-8224-e54688b97c7e"
+	seen := map[string]bool{}
+	for _, path := range []string{"/v1/info?", "/__down?bytes=0&", "/__down?bytes=128&", "/__up?"} {
+		logs.Reset()
+		method := http.MethodGet
+		if strings.HasPrefix(path, "/__up") {
+			method = http.MethodPost
+		}
+		w := call(s, method, path+"client_id="+clientID+"&test_id="+testID, strings.NewReader("payload"), nil)
+		entry := decodeLog(t, logs)
+		id := w.Header().Get("X-Request-ID")
+		if id == "" || seen[id] || entry["request_id"] != id {
+			t.Fatalf("request ID missing, reused, or mismatched: %v", entry)
+		}
+		seen[id] = true
+		if entry["client_id"] != clientID || entry["test_id"] != testID {
+			t.Fatalf("missing session/test context: %v", entry)
+		}
+	}
+}
+
+func TestRequestLogsExcludeMalformedAndDuplicateCorrelationIDs(t *testing.T) {
+	valid := "873f962f-70c1-478e-9c67-5cfe3cd72cd5"
+	for _, name := range []string{"client_id", "test_id"} {
+		for _, value := range []string{"", "private-token", "private\nlevel=ERROR", "192.0.2.1", strings.Repeat("a", 2000), valid + "\n", "873f962f-70c1-178e-9c67-5cfe3cd72cd5", "873f962f-70c1-478e-0c67-5cfe3cd72cd5"} {
+			s := testServer(t)
+			logs := captureLogs(s, slog.LevelInfo)
+			w := call(s, "GET", "/v1/info?"+name+"="+url.QueryEscape(value), nil, nil)
+			entry := decodeLog(t, logs)
+			if _, exists := entry[name]; exists || w.Code != http.StatusOK {
+				t.Fatalf("invalid correlation field retained or request rejected: %v", entry)
+			}
+			if strings.Contains(logs.String(), "private") || strings.Contains(logs.String(), "192.0.2.1") {
+				t.Fatal("private data leaked into logs")
+			}
+		}
+		s := testServer(t)
+		logs := captureLogs(s, slog.LevelInfo)
+		call(s, "GET", "/v1/info?"+name+"="+valid+"&"+name+"="+valid, nil, nil)
+		if _, exists := decodeLog(t, logs)[name]; exists {
+			t.Fatal("ambiguous duplicate ID retained")
+		}
+	}
+}
 
 func captureLogs(s *Server, level slog.Level) *bytes.Buffer {
 	buffer := new(bytes.Buffer)

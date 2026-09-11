@@ -4,8 +4,22 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"time"
 )
+
+var traceIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+// Correlation IDs are untrusted hints, never authentication or metric labels.
+// Accept only a single canonical UUIDv4, excluding arbitrary query content.
+func requestTraceID(query url.Values, name string) string {
+	values := query[name]
+	if len(values) == 1 && traceIDPattern.MatchString(values[0]) {
+		return values[0]
+	}
+	return ""
+}
 
 // Count streaming IO without retaining request bodies or response payloads.
 type loggedResponse struct {
@@ -115,10 +129,17 @@ func (s *Server) logRequest(r *http.Request, w *loggedResponse, body *loggedBody
 	if w.writeErr || r.Context().Err() != nil {
 		level, outcome = slog.LevelWarn, "interrupted"
 	}
-	s.logger.Log(r.Context(), level, "http request",
+	fields := []any{
 		"request_id", id, "method", method, "path", path,
 		"status", status, "outcome", outcome,
-		"duration_ms", float64(time.Since(started).Microseconds())/1000,
+		"duration_ms", float64(time.Since(started).Microseconds()) / 1000,
 		"bytes_received", body.bytes, "bytes_sent", w.bytes,
-	)
+	}
+	query := r.URL.Query()
+	for _, name := range []string{"client_id", "test_id"} {
+		if value := requestTraceID(query, name); value != "" {
+			fields = append(fields, name, value)
+		}
+	}
+	s.logger.Log(r.Context(), level, "http request", fields...)
 }
