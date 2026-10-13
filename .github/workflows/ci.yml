@@ -121,7 +121,7 @@ jobs:
     name: Shared container build
     needs: checks
     if: github.event_name == 'push' && github.ref_protected
-    uses: Onemind-Services-LLC/actions/.github/workflows/container-build.yml@66ca2225b9030fa1a3f807cfb2464f8d7e87b596
+    uses: Onemind-Services-LLC/actions/.github/workflows/container-build.yml@c684871341adf691061e9324ac1c7edbca2d2a28
     with:
       registry: registry.onemindservices.com
       image: registry.onemindservices.com/speedtest/api
