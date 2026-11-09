@@ -3,7 +3,7 @@ module github.com/Onemind-Services-LLC/speedtest-api
 go 1.27.1
 
 require (
-	github.com/oschwald/maxminddb-golang/v2 v2.6.0
+	github.com/oschwald/maxminddb-golang/v2 v2.9.0
 	github.com/pion/ice/v4 v4.4.2
 	github.com/pion/webrtc/v4 v4.2.20
 	github.com/pires/go-proxyproto v0.15.0
@@ -28,6 +28,6 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
 )
